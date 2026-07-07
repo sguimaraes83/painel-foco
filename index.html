@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Painel de Foco — Dev/Tech Lead Mendix</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================= AUTH SCREEN ================= -->
+<div class="auth-wrap" id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-eyebrow">Blueprint // Acesso</div>
+    <h1>Painel de Foco</h1>
+    <div class="sub">Controle de atividades — Dev &amp; Tech Lead Mendix</div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-form="login">Entrar</button>
+      <button class="auth-tab" data-form="signup">Criar conta</button>
+    </div>
+
+    <!-- LOGIN -->
+    <form class="auth-form active" id="login-form">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="voce@empresa.com" required />
+      <label>Senha</label>
+      <input type="password" id="login-password" placeholder="••••••••" required />
+      <button class="btn" type="submit" id="login-btn">Entrar</button>
+      <span class="auth-link" id="forgot-link">Esqueci minha senha</span>
+      <div class="auth-msg" id="login-msg"></div>
+    </form>
+
+    <!-- SIGNUP -->
+    <form class="auth-form" id="signup-form">
+      <label>Email</label>
+      <input type="email" id="signup-email" placeholder="voce@empresa.com" required />
+      <label>Senha</label>
+      <input type="password" id="signup-password" placeholder="mínimo 6 caracteres" minlength="6" required />
+      <label>Confirmar senha</label>
+      <input type="password" id="signup-password2" placeholder="repita a senha" minlength="6" required />
+      <button class="btn" type="submit" id="signup-btn">Criar conta</button>
+      <div class="auth-msg" id="signup-msg"></div>
+    </form>
+
+    <!-- FORGOT PASSWORD -->
+    <form class="auth-form" id="forgot-form">
+      <label>Email cadastrado</label>
+      <input type="email" id="forgot-email" placeholder="voce@empresa.com" required />
+      <button class="btn" type="submit" id="forgot-btn">Enviar link de redefinição</button>
+      <span class="auth-link" id="back-to-login-link">Voltar para o login</span>
+      <div class="auth-msg" id="forgot-msg"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ================= APP SCREEN ================= -->
+<div id="app-screen">
+  <div class="wrap">
+
+    <div class="header">
+      <div>
+        <div class="eyebrow">Blueprint // Registro de engenharia</div>
+        <h1>Painel de Foco</h1>
+        <div class="subtitle">Controle de atividades — Dev &amp; Tech Lead Mendix</div>
+      </div>
+      <div class="header-right">
+        <span class="user-email" id="user-email"></span>
+        <div class="date-badge" id="today-badge">—</div>
+        <button class="logout-btn" id="logout-btn">Sair</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT COLUMN -->
+      <div>
+        <div class="panel">
+          <div class="panel-title" id="form-title">Registrar atividade <span class="tag">Novo</span></div>
+
+          <label>Categoria</label>
+          <div class="chip-select" id="cat-select"></div>
+
+          <div class="row2">
+            <div>
+              <label>Projeto / Cliente</label>
+              <div class="datalist-wrap">
+                <input list="project-list" id="f-project" placeholder="Ex: Portal Financeiro" />
+                <datalist id="project-list"></datalist>
+              </div>
+            </div>
+            <div>
+              <label>Duração (min)</label>
+              <input type="number" id="f-duration" min="5" step="5" placeholder="60" />
+            </div>
+          </div>
+
+          <label>Descrição da tarefa</label>
+          <textarea id="f-desc" placeholder="Ex: Ajuste de microflow de aprovação..."></textarea>
+
+          <div class="row2">
+            <div>
+              <label>Status</label>
+              <select id="f-status">
+                <option value="Concluída">Concluída</option>
+                <option value="Em andamento">Em andamento</option>
+                <option value="Bloqueada">Bloqueada</option>
+                <option value="Retrabalho">Retrabalho</option>
+              </select>
+            </div>
+            <div>
+              <label>Valor entregue</label>
+              <select id="f-value">
+                <option value="Alto">Alto</option>
+                <option value="Médio">Médio</option>
+                <option value="Baixo">Baixo</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn" id="add-btn">+ Adicionar ao dia</button>
+          <button class="btn btn-ghost" id="cancel-btn" style="display:none;">Cancelar edição</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Capacidade do dia</div>
+          <div class="dial-row">
+            <svg id="dial-svg" width="140" height="140" viewBox="0 0 140 140"></svg>
+            <div class="dial-stats">
+              <div class="big-number" id="dial-total">0<span>/480 min</span></div>
+              <div class="stat-line"><span>Alto valor</span><b id="stat-highvalue">0%</b></div>
+              <div class="stat-line"><span>Reuniões</span><b id="stat-meetings">0%</b></div>
+              <div class="stat-line"><span>Bloqueado</span><b id="stat-blocked">0 min</b></div>
+              <div class="stat-line"><span>Retrabalho</span><b id="stat-rework">0 min</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Radar de foco</div>
+          <div id="alerts-box"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <div class="panel">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="hoje">Hoje</button>
+            <button class="tab-btn" data-tab="semana">Semana</button>
+          </div>
+
+          <div id="tab-hoje">
+            <div class="filter-bar">
+              <select id="filter-project"><option value="">Todos os projetos</option></select>
+            </div>
+            <div id="entries-list"></div>
+            <div id="entries-empty" class="empty-note" style="display:none;">Nenhuma atividade registrada hoje. Comece pelo formulário ao lado.</div>
+          </div>
+
+          <div id="tab-semana" style="display:none;">
+            <div class="week-chart" id="week-chart"></div>
+            <div class="legend" id="legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
