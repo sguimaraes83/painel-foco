@@ -16,7 +16,25 @@
   }
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+  
+  // Fuso horário fixo do sistema: Brasília, independente do fuso do navegador
+  const BR_TZ = 'America/Sao_Paulo';
+  
+  function dateToStrBR(dateObj){
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: BR_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(dateObj);
+    const y = parts.find(p => p.type === 'year').value;
+    const m = parts.find(p => p.type === 'month').value;
+    const d = parts.find(p => p.type === 'day').value;
+    return `${y}-${m}-${d}`;
+  }
+  
+  function addDaysStr(dateStr, delta){
+    const dt = new Date(dateStr + 'T12:00:00-03:00');
+    dt.setDate(dt.getDate() + delta);
+    return dateToStrBR(dt);
+  }
   const CATS = [
     { id:'dev',        label:'Desenvolvimento Novo',        color:'#2DD4BF', meeting:false },
     { id:'bug',         label:'Correção de Bugs',             color:'#F87171', meeting:false },
@@ -34,8 +52,8 @@
   let projectFilter = '';
   let editingId = null;
 
-  const todayStr = () => new Date().toISOString().slice(0,10);
-  const fmtDatePT = (d) => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+  const todayStr = () => dateToStrBR(new Date());
+  const fmtDatePT = (d) => new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone: BR_TZ });
   const minutesToHM = (m) => { const h = Math.floor(m/60), mm = m % 60; return h > 0 ? `${h}h${mm.toString().padStart(2,'0')}` : `${mm}min`; };
 
   // ============================================================
@@ -448,8 +466,7 @@
     const chart = document.getElementById('week-chart');
     const days = [];
     for(let i = 6; i >= 0; i--){
-      const d = new Date(); d.setDate(d.getDate() - i);
-      days.push(d.toISOString().slice(0,10));
+      days.push(addDaysStr(todayStr(), -i));
     }
     const maxTotal = Math.max(DAY_BUDGET, ...days.map(d => activities.filter(a => a.date === d).reduce((s,a)=>s+a.duration,0)));
 
@@ -465,8 +482,7 @@
         const pct = (min / maxTotal) * 100;
         return `<div class="week-seg" style="height:${pct}%; background:${c.color}"></div>`;
       }).join('');
-
-      const label = new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { weekday:'short' }).replace('.','');
+      const label = new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { weekday:'short', timeZone: BR_TZ }).replace('.','');
       const isToday = d === todayStr();
 
       return `
