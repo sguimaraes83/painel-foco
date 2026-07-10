@@ -16,10 +16,10 @@
   }
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  
+
   // Fuso horário fixo do sistema: Brasília, independente do fuso do navegador
   const BR_TZ = 'America/Sao_Paulo';
-  
+
   function dateToStrBR(dateObj){
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: BR_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
@@ -29,12 +29,14 @@
     const d = parts.find(p => p.type === 'day').value;
     return `${y}-${m}-${d}`;
   }
-  
+
   function addDaysStr(dateStr, delta){
+    // Ancora ao meio-dia de Brasília para evitar problemas de fuso/horário de verão
     const dt = new Date(dateStr + 'T12:00:00-03:00');
     dt.setDate(dt.getDate() + delta);
     return dateToStrBR(dt);
   }
+
   const CATS = [
     { id:'dev',        label:'Desenvolvimento Novo',        color:'#2DD4BF', meeting:false },
     { id:'bug',         label:'Correção de Bugs',             color:'#F87171', meeting:false },
@@ -50,6 +52,7 @@
   let activities = []; // linhas do banco: {id, date, cat_id, project, description, duration, status, value, created_at}
   let currentTab = 'hoje';
   let projectFilter = '';
+  let viewDate = null; // definido em init() como hoje (fuso de Brasília)
   let editingId = null;
 
   const todayStr = () => dateToStrBR(new Date());
@@ -163,6 +166,7 @@
   sb.auth.onAuthStateChange((event, session) => {
     if(session && session.user){
       currentUser = session.user;
+      if(!viewDate) viewDate = todayStr();
       document.getElementById('auth-screen').style.display = 'none';
       document.getElementById('app-screen').style.display = 'block';
       document.getElementById('user-email').textContent = currentUser.email;
@@ -246,6 +250,7 @@
   }
 
   function clearForm(){
+    document.getElementById('f-date').value = viewDate || todayStr();
     document.getElementById('f-project').value = '';
     document.getElementById('f-duration').value = '';
     document.getElementById('f-desc').value = '';
@@ -255,6 +260,7 @@
   }
 
   async function submitActivity(){
+    const date = document.getElementById('f-date').value || todayStr();
     const project = document.getElementById('f-project').value.trim() || 'Sem projeto';
     const duration = parseInt(document.getElementById('f-duration').value, 10);
     const description = document.getElementById('f-desc').value.trim();
@@ -271,10 +277,11 @@
     btn.disabled = true;
 
     if(editingId){
-      const ok = await updateActivityRow(editingId, { cat_id, project, description, duration, status, value });
+      const ok = await updateActivityRow(editingId, { date, cat_id, project, description, duration, status, value });
       if(ok) exitEditMode();
     } else {
-      await insertActivity({ date: todayStr(), cat_id, project, description, duration, status, value });
+      await insertActivity({ date, cat_id, project, description, duration, status, value });
+      viewDate = date; // pula automaticamente para o dia da atividade recém-criada
     }
 
     btn.disabled = false;
@@ -288,6 +295,7 @@
     editingId = id;
 
     setSelectedCat(a.cat_id);
+    document.getElementById('f-date').value = a.date;
     document.getElementById('f-project').value = a.project === 'Sem projeto' ? '' : a.project;
     document.getElementById('f-duration').value = a.duration;
     document.getElementById('f-desc').value = a.description || '';
@@ -328,13 +336,12 @@
     return { total, meetingMin, blockedMin, reworkMin, highValueMin };
   }
 
-  function renderDial(stats){
+  function renderDial(stats, todays){
     const svg = document.getElementById('dial-svg');
     const cx=70, cy=70, r=58, stroke=13;
     const circumference = 2 * Math.PI * r;
     let segs = '', offset = 0;
 
-    const todays = activities.filter(a => a.date === todayStr());
     const byCat = {};
     todays.forEach(a => { byCat[a.cat_id] = (byCat[a.cat_id]||0) + a.duration; });
 
@@ -376,7 +383,7 @@
     const highValuePct = stats.total ? stats.highValueMin/stats.total : 0;
 
     if(meetingPct > 0.30){
-      items.push({ type:'bad', html: `<b>${Math.round(meetingPct*100)}% do tempo</b> foi consumido em reuniões hoje. Considere blindar blocos de foco sem SCRUM.` });
+      items.push({ type:'bad', html: `<b>${Math.round(meetingPct*100)}% do tempo</b> foi consumido em reuniões neste dia. Considere blindar blocos de foco sem SCRUM.` });
     } else if(meetingPct > 0.20){
       items.push({ type:'warn', html: `Reuniões já somam <b>${Math.round(meetingPct*100)}%</b> do dia. Fique de olho para não passar de 25-30%.` });
     }
@@ -412,22 +419,21 @@
   function renderEntries(){
     const list = document.getElementById('entries-list');
     const empty = document.getElementById('entries-empty');
-    let todays = activities.filter(a => a.date === todayStr());
-    if(projectFilter) todays = todays.filter(a => a.project === projectFilter);
-    todays = todays.slice().sort((a,b) => b.created_at.localeCompare(a.created_at));
+    let dayActs = activities.filter(a => a.date === viewDate);
+    if(projectFilter) dayActs = dayActs.filter(a => a.project === projectFilter);
+    dayActs = dayActs.slice().sort((a,b) => b.created_at.localeCompare(a.created_at));
 
-    if(todays.length === 0){
+    if(dayActs.length === 0){
       list.innerHTML = '';
       empty.style.display = 'block';
       return;
     }
     empty.style.display = 'none';
 
-    list.innerHTML = todays.map(a => {
+    list.innerHTML = dayActs.map(a => {
       const c = catById(a.cat_id);
-      const badges = [];
-      if(a.status === 'Bloqueada') badges.push('<span class="badge blocked">Bloqueada</span>');
-      if(a.status === 'Retrabalho') badges.push('<span class="badge retrabalho">Retrabalho</span>');
+      const statusClass = { 'Concluída':'concluida', 'Em andamento':'andamento', 'Bloqueada':'blocked', 'Retrabalho':'retrabalho' }[a.status] || 'andamento';
+      const badges = [`<span class="badge ${statusClass}">${a.status}</span>`];
       const valClass = a.value === 'Alto' ? 'alto' : a.value === 'Médio' ? 'medio' : 'baixo';
       badges.push(`<span class="badge ${valClass}">${a.value}</span>`);
 
@@ -482,6 +488,7 @@
         const pct = (min / maxTotal) * 100;
         return `<div class="week-seg" style="height:${pct}%; background:${c.color}"></div>`;
       }).join('');
+
       const label = new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { weekday:'short', timeZone: BR_TZ }).replace('.','');
       const isToday = d === todayStr();
 
@@ -500,11 +507,20 @@
 
   function render(){
     document.getElementById('today-badge').textContent = fmtDatePT(todayStr());
-    const todays = activities.filter(a => a.date === todayStr());
-    const stats = computeStats(todays);
 
-    renderDial(stats);
-    renderAlerts(stats, todays);
+    const dateInput = document.getElementById('filter-date');
+    if(dateInput.value !== viewDate) dateInput.value = viewDate;
+
+    const isToday = viewDate === todayStr();
+    document.getElementById('capacity-title').textContent = isToday
+      ? 'Capacidade do dia'
+      : `Capacidade — ${fmtDatePT(viewDate)}`;
+
+    const dayActs = activities.filter(a => a.date === viewDate);
+    const stats = computeStats(dayActs);
+
+    renderDial(stats, dayActs);
+    renderAlerts(stats, dayActs);
     renderEntries();
     renderProjectOptions();
     renderWeek();
@@ -527,6 +543,13 @@
     projectFilter = e.target.value;
     renderEntries();
   });
+
+  document.getElementById('filter-date').addEventListener('change', (e) => {
+    if(e.target.value){ viewDate = e.target.value; render(); }
+  });
+  document.getElementById('date-prev').addEventListener('click', () => { viewDate = addDaysStr(viewDate, -1); render(); });
+  document.getElementById('date-next').addEventListener('click', () => { viewDate = addDaysStr(viewDate, 1); render(); });
+  document.getElementById('date-today').addEventListener('click', () => { viewDate = todayStr(); render(); });
 
   document.getElementById('add-btn').addEventListener('click', submitActivity);
   document.getElementById('cancel-btn').addEventListener('click', () => { exitEditMode(); clearForm(); });

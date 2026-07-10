@@ -84,6 +84,9 @@
           <label>Categoria</label>
           <div class="chip-select" id="cat-select"></div>
 
+          <label>Data</label>
+          <input type="date" id="f-date" />
+
           <div class="row2">
             <div>
               <label>Projeto / Cliente</label>
@@ -126,7 +129,7 @@
         </div>
 
         <div class="panel">
-          <div class="panel-title">Capacidade do dia</div>
+          <div class="panel-title" id="capacity-title">Capacidade do dia</div>
           <div class="dial-row">
             <svg id="dial-svg" width="140" height="140" viewBox="0 0 140 140"></svg>
             <div class="dial-stats">
@@ -149,16 +152,20 @@
       <div>
         <div class="panel">
           <div class="tabs">
-            <button class="tab-btn active" data-tab="hoje">Hoje</button>
+            <button class="tab-btn active" data-tab="hoje">Dia</button>
             <button class="tab-btn" data-tab="semana">Semana</button>
           </div>
 
           <div id="tab-hoje">
             <div class="filter-bar">
+              <button class="icon-btn" id="date-prev" type="button" title="Dia anterior">←</button>
+              <input type="date" id="filter-date" />
+              <button class="icon-btn" id="date-today" type="button">Hoje</button>
+              <button class="icon-btn" id="date-next" type="button" title="Próximo dia">→</button>
               <select id="filter-project"><option value="">Todos os projetos</option></select>
             </div>
             <div id="entries-list"></div>
-            <div id="entries-empty" class="empty-note" style="display:none;">Nenhuma atividade registrada hoje. Comece pelo formulário ao lado.</div>
+            <div id="entries-empty" class="empty-note" style="display:none;">Nenhuma atividade registrada nesta data. Comece pelo formulário ao lado.</div>
           </div>
 
           <div id="tab-semana" style="display:none;">
