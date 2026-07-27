@@ -81,7 +81,10 @@
         <div class="panel">
           <div class="panel-title" id="form-title">Registrar atividade <span class="tag">Novo</span></div>
 
-          <label>Categoria</label>
+          <label style="display:flex; justify-content:space-between; align-items:center; margin-top:0;">
+            <span>Categoria</span>
+            <span class="link-btn" id="manage-cats-btn">Gerenciar categorias</span>
+          </label>
           <div class="chip-select" id="cat-select"></div>
 
           <label>Data</label>
@@ -154,6 +157,7 @@
           <div class="tabs">
             <button class="tab-btn active" data-tab="hoje">Dia</button>
             <button class="tab-btn" data-tab="semana">Semana</button>
+            <button class="tab-btn" data-tab="relatorio">Relatório</button>
           </div>
 
           <div id="tab-hoje">
@@ -172,13 +176,79 @@
             <div class="week-chart" id="week-chart"></div>
             <div class="legend" id="legend"></div>
           </div>
+
+          <div id="tab-relatorio" style="display:none;">
+            <div class="filter-bar">
+              <div>
+                <label style="margin:0 0 4px;">De</label>
+                <input type="date" id="report-from" />
+              </div>
+              <div>
+                <label style="margin:0 0 4px;">Até</label>
+                <input type="date" id="report-to" />
+              </div>
+              <select id="report-project"><option value="">Todos os projetos</option></select>
+              <button class="icon-btn" id="report-generate" type="button">Gerar relatório</button>
+            </div>
+
+            <div id="report-empty" class="empty-note">Escolha um período e clique em "Gerar relatório".</div>
+
+            <div id="report-result" style="display:none;">
+              <div class="report-summary" id="report-summary"></div>
+
+              <div class="panel-title" style="margin-top:20px;">Por status</div>
+              <table class="report-table" id="report-status-table"></table>
+
+              <div class="panel-title" style="margin-top:20px;">Por categoria</div>
+              <table class="report-table" id="report-category-table"></table>
+
+              <div class="report-export">
+                <button class="btn btn-ghost" id="export-html-btn" type="button">Exportar HTML</button>
+                <button class="btn" id="export-pdf-btn" type="button">Baixar PDF</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
+<!-- ================= MODAL: GERENCIAR CATEGORIAS ================= -->
+<div class="modal-overlay" id="cats-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="panel-title" style="margin:0;">Gerenciar categorias</div>
+      <button class="icon-btn" id="cats-modal-close" type="button">✕</button>
+    </div>
+
+    <div id="cats-list"></div>
+
+    <div class="cat-form">
+      <div class="panel-title" id="cat-form-title" style="font-size:13px; margin-top:18px;">Nova categoria</div>
+      <div class="row2">
+        <div>
+          <label>Nome</label>
+          <input type="text" id="cat-f-label" placeholder="Ex: Testes / QA" />
+        </div>
+        <div>
+          <label>Cor</label>
+          <input type="color" id="cat-f-color" value="#38BDF8" />
+        </div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; margin-top:12px;">
+        <input type="checkbox" id="cat-f-meeting" style="width:auto;" />
+        Conta como reunião (entra no alerta de % de reuniões)
+      </label>
+      <button class="btn" id="cat-save-btn" type="button" style="margin-top:14px;">Adicionar categoria</button>
+      <button class="btn btn-ghost" id="cat-cancel-btn" type="button" style="display:none;">Cancelar edição</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
