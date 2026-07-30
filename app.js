@@ -39,6 +39,17 @@
   const fmtDateShort = (d) => new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', timeZone: BR_TZ });
   const minutesToHM = (m) => { const h = Math.floor(m/60), mm = m % 60; return h > 0 ? `${h}h${mm.toString().padStart(2,'0')}` : `${mm}min`; };
 
+  function getWeekdayMon0(dateStr){
+    // Calcula o dia da semana (Segunda=0 ... Domingo=6) puramente pelo calendário,
+    // sem depender do fuso do navegador.
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const jsDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Dom,1=Seg,...6=Sáb
+    return (jsDay + 6) % 7;
+  }
+  function getMondayOfWeek(dateStr){
+    return addDaysStr(dateStr, -getWeekdayMon0(dateStr));
+  }
+
   // Categorias padrão — usadas apenas para semear a conta na primeira vez
   // e para migrar automaticamente atividades antigas (criadas antes do CRUD de categorias).
   const DEFAULT_CATEGORIES = [
@@ -575,8 +586,10 @@
 
   function renderWeek(){
     const chart = document.getElementById('week-chart');
+    const monday = getMondayOfWeek(todayStr());
     const days = [];
-    for(let i = 6; i >= 0; i--){ days.push(addDaysStr(todayStr(), -i)); }
+    for(let i = 0; i <= 6; i++){ days.push(addDaysStr(monday, i)); }
+    document.getElementById('week-period').textContent = `${fmtDateShort(days[0])} (Seg) — ${fmtDateShort(days[6])} (Dom)`;
     const maxTotal = Math.max(DAY_BUDGET, ...days.map(d => activities.filter(a => a.date === d).reduce((s,a)=>s+a.duration,0)));
 
     chart.innerHTML = days.map(d => {

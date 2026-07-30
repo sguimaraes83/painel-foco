@@ -329,6 +329,7 @@ textarea{ resize: vertical; min-height: 54px; }
 .week-seg{ width:100%; }
 .week-label{ font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); text-transform:uppercase; }
 .week-total{ font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); }
+.week-period{ font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
 
 .legend{ display:flex; flex-wrap:wrap; gap: 12px; margin-top: 16px; }
 .legend-item{ display:flex; align-items:center; gap:6px; font-size: 11px; color: var(--muted); }
