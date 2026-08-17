@@ -93,6 +93,8 @@
   let kpis = [];           // {id, label, unit, target_value, comparison, metric_key, sort_order}
   let kpiValues = [];      // {id, kpi_id, week_start, value}
   let strategyNotes = [];  // {id, week_start, question_key, answer}
+  let goalTasks = [];      // {id, goal_id, title, done, due_date, sort_order}
+  let expandedGoals = new Set();
   let editingGoalId = null;
   let editingKpiId = null;
 
@@ -208,7 +210,7 @@
     await initCategories();
     await migrateLegacyCategories();
     await initKpis();
-    await Promise.all([loadActivities(), loadGoals(), loadKpiValues(), loadStrategyNotes()]);
+    await Promise.all([loadActivities(), loadGoals(), loadKpiValues(), loadStrategyNotes(), loadGoalTasks()]);
     renderMetasView();
   }
 
@@ -367,9 +369,55 @@
       currentView = btn.dataset.view;
       document.getElementById('view-atividades').style.display = currentView === 'atividades' ? 'block' : 'none';
       document.getElementById('view-metas').style.display = currentView === 'metas' ? 'block' : 'none';
+      document.getElementById('view-historico').style.display = currentView === 'historico' ? 'block' : 'none';
       if(currentView === 'metas') renderMetasView();
+      if(currentView === 'historico') renderHistoryView();
     });
   });
+
+  function goToWeek(weekStart){
+    metasWeekStart = weekStart;
+    currentView = 'metas';
+    document.querySelectorAll('.main-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'metas'));
+    document.getElementById('view-atividades').style.display = 'none';
+    document.getElementById('view-metas').style.display = 'block';
+    document.getElementById('view-historico').style.display = 'none';
+    renderMetasView();
+  }
+
+  function renderHistoryView(){
+    const weeks = [...new Set([
+      ...goals.map(g => g.week_start),
+      ...strategyNotes.map(n => n.week_start),
+      ...kpiValues.map(v => v.week_start),
+    ])].sort().reverse();
+
+    const table = document.getElementById('history-table');
+    const empty = document.getElementById('history-empty');
+
+    if(weeks.length === 0){ table.innerHTML = ''; empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+
+    table.innerHTML = `
+      <thead><tr><th>Semana</th><th class="num">Metas</th><th class="num">Resultado total</th><th class="num">Tarefas</th><th></th></tr></thead>
+      <tbody>${weeks.map(w => {
+        const wGoals = goals.filter(g => g.week_start === w);
+        const totalResultado = wGoals.reduce((s,g) => s + Number(g.resultado || 0), 0);
+        const wGoalIds = wGoals.map(g => g.id);
+        const wTasks = goalTasks.filter(t => wGoalIds.includes(t.goal_id));
+        const doneTasks = wTasks.filter(t => t.done).length;
+        const isCurrent = w === getMondayOfWeek(todayStr());
+        return `<tr>
+          <td>${fmtDateShort(w)} — ${fmtDateShort(weekEndStr(w))}${isCurrent ? ' <span class="badge alto" style="margin-left:6px;">atual</span>' : ''}</td>
+          <td class="num">${wGoals.length}</td>
+          <td class="num">${totalResultado}</td>
+          <td class="num">${wTasks.length ? doneTasks + '/' + wTasks.length : '—'}</td>
+          <td><button class="icon-btn history-view-btn" data-week="${w}" type="button">Ver semana</button></td>
+        </tr>`;
+      }).join('')}</tbody>`;
+
+    table.querySelectorAll('.history-view-btn').forEach(b => b.addEventListener('click', () => goToWeek(b.dataset.week)));
+  }
 
   // ============================================================
   // METAS & KPIs & ESTRATÉGIA — dados
@@ -405,6 +453,12 @@
     const { data, error } = await sb.from('strategy_notes').select('*');
     strategyNotes = error ? [] : (data || []);
     if(error) console.error('Erro ao carregar análise estratégica:', error);
+  }
+
+  async function loadGoalTasks(){
+    const { data, error } = await sb.from('goal_tasks').select('*').order('sort_order');
+    goalTasks = error ? [] : (data || []);
+    if(error) console.error('Erro ao carregar tarefas das metas:', error);
   }
 
   function weekEndStr(weekStart){ return addDaysStr(weekStart, 6); }
@@ -628,6 +682,124 @@
     renderMetasView();
   }
 
+  function getTasksForGoal(goalId){
+    return goalTasks.filter(t => t.goal_id === goalId).slice().sort((a,b) => (a.sort_order - b.sort_order) || a.title.localeCompare(b.title));
+  }
+
+  function parseMetaIntoTasks(meta){
+    if(!meta) return [];
+    const parts = meta.split(/[,;\n]+/).map(s => s.trim()).filter(s => s.length > 1);
+    const seen = new Set();
+    const out = [];
+    for(let p of parts){
+      p = p.replace(/^e\s+/i, '').trim();
+      if(!p) continue;
+      const cap = p.charAt(0).toUpperCase() + p.slice(1);
+      const key = cap.toLowerCase();
+      if(!seen.has(key)){ seen.add(key); out.push(cap); }
+      if(out.length >= 10) break;
+    }
+    return out;
+  }
+
+  function distributeDueDates(weekStart, count){
+    const dates = [];
+    for(let i = 0; i < count; i++){
+      const offset = Math.min(Math.floor((i * 7) / count), 6);
+      dates.push(addDaysStr(weekStart, offset));
+    }
+    return dates;
+  }
+
+  async function handleGenerateTasks(goalId){
+    const goal = goals.find(g => g.id === goalId);
+    if(!goal) return;
+    const existing = getTasksForGoal(goalId);
+    if(existing.length > 0){
+      if(!confirm('Isso substitui as tarefas atuais desta meta por uma nova lista gerada a partir do texto da Meta. Continuar?')) return;
+    }
+    const items = parseMetaIntoTasks(goal.meta);
+    if(items.length === 0){
+      alert('Não encontrei itens para virar tarefas. Escreva a Meta como uma lista separada por vírgulas, ou adicione tarefas manualmente.');
+      return;
+    }
+    if(existing.length > 0){
+      await sb.from('goal_tasks').delete().in('id', existing.map(t => t.id));
+    }
+    const dueDates = distributeDueDates(goal.week_start, items.length);
+    const rows = items.map((title, i) => ({ user_id: currentUser.id, goal_id: goalId, title, due_date: dueDates[i], sort_order: i }));
+    const { error } = await sb.from('goal_tasks').insert(rows);
+    if(error){ alert('Erro ao gerar tarefas: ' + error.message); return; }
+
+    expandedGoals.add(goalId);
+    await loadGoalTasks();
+    renderGoalsTable();
+  }
+
+  async function handleAddTask(goalId){
+    const input = document.getElementById('task-new-' + goalId);
+    const title = input.value.trim();
+    if(!title) return;
+    const existing = getTasksForGoal(goalId);
+    const goal = goals.find(g => g.id === goalId);
+    const { error } = await sb.from('goal_tasks').insert({
+      user_id: currentUser.id, goal_id: goalId, title,
+      due_date: weekEndStr(goal ? goal.week_start : metasWeekStart), sort_order: existing.length
+    });
+    if(error){ alert('Erro ao adicionar tarefa: ' + error.message); return; }
+    await loadGoalTasks();
+    renderGoalsTable();
+  }
+
+  async function handleToggleTask(taskId, checked){
+    const { error } = await sb.from('goal_tasks').update({ done: checked }).eq('id', taskId);
+    if(error){ alert('Erro ao atualizar tarefa: ' + error.message); return; }
+    await loadGoalTasks();
+    renderGoalsTable();
+  }
+
+  async function handleDeleteTask(taskId){
+    const { error } = await sb.from('goal_tasks').delete().eq('id', taskId);
+    if(error){ alert('Erro ao remover tarefa: ' + error.message); return; }
+    await loadGoalTasks();
+    renderGoalsTable();
+  }
+
+  function toggleExpandGoal(goalId){
+    if(expandedGoals.has(goalId)) expandedGoals.delete(goalId); else expandedGoals.add(goalId);
+    renderGoalsTable();
+  }
+
+  function renderTaskChecklistHtml(goal){
+    const tasks = getTasksForGoal(goal.id);
+    const done = tasks.filter(t => t.done).length;
+    const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+
+    const listHtml = tasks.length ? tasks.map(t => `
+      <div class="task-row">
+        <input type="checkbox" data-task-id="${t.id}" class="task-check" ${t.done ? 'checked' : ''} />
+        <div class="title ${t.done ? 'done' : ''}">${t.title}</div>
+        ${t.due_date ? `<div class="due">${fmtDateShort(t.due_date)}</div>` : ''}
+        <button class="del-btn task-del" data-task-id="${t.id}" title="Remover">✕</button>
+      </div>
+    `).join('') : '<div class="empty-note">Sem tarefas ainda.</div>';
+
+    return `
+      <div class="goal-tasks-box">
+        <div class="goal-tasks-header">
+          <span style="font-size:12px; color:var(--muted);">Tarefas para atingir a meta</span>
+          ${tasks.length ? `<span class="goal-tasks-progress">${done}/${tasks.length} concluídas (${pct}%)</span>` : ''}
+        </div>
+        ${tasks.length ? `<div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>` : ''}
+        ${listHtml}
+        <div class="task-add-row">
+          <input type="text" id="task-new-${goal.id}" placeholder="Nova tarefa..." />
+          <button class="icon-btn task-add-btn" data-goal-id="${goal.id}" type="button">+ Adicionar</button>
+          <button class="icon-btn task-gen-btn" data-goal-id="${goal.id}" type="button">${tasks.length ? '↻ Gerar de novo' : '✦ Gerar tarefas'}</button>
+        </div>
+      </div>`;
+  }
+
   function renderGoalsTable(){
     const isCurrent = metasWeekStart === getMondayOfWeek(todayStr());
     document.getElementById('goals-title').textContent = isCurrent ? 'Metas da semana' : `Metas — semana de ${fmtDateShort(metasWeekStart)}`;
@@ -647,24 +819,53 @@
     table.innerHTML = `
       <thead><tr><th>P</th><th>Área</th><th>Meta</th><th class="num">Resultado</th><th></th></tr></thead>
       <tbody>
-        ${weekGoals.map(g => `
+        ${weekGoals.map(g => {
+          const tasks = getTasksForGoal(g.id);
+          const expanded = expandedGoals.has(g.id);
+          const taskSummary = tasks.length ? `${tasks.filter(t=>t.done).length}/${tasks.length}` : null;
+          const rowHtml = `
           <tr>
             <td class="num">${g.priority}</td>
             <td>${g.area}</td>
             <td>${g.meta || '<span style="color:#5B6E92">—</span>'}</td>
             <td class="num">${g.resultado}</td>
             <td style="white-space:nowrap;">
+              <button class="toggle-tasks-btn" data-goal-id="${g.id}">${expanded ? '▾' : '▸'} Tarefas${taskSummary ? ' (' + taskSummary + ')' : ''}</button>
               <button class="edit-btn" data-id="${g.id}" title="Editar">✎</button>
               <button class="del-btn" data-id="${g.id}" title="Remover">✕</button>
             </td>
-          </tr>
-        `).join('')}
+          </tr>`;
+          const tasksRowHtml = expanded ? `
+          <tr class="goal-tasks-row"><td colspan="5">${renderTaskChecklistHtml(g)}</td></tr>` : '';
+          return rowHtml + tasksRowHtml;
+        }).join('')}
         <tr><td></td><td></td><td style="text-align:right; color:var(--muted);">Total</td><td class="num"><b>${total}</b></td><td></td></tr>
       </tbody>`;
 
     table.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => startGoalEdit(b.dataset.id)));
     table.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => handleDeleteGoal(b.dataset.id)));
+    table.querySelectorAll('.toggle-tasks-btn').forEach(b => b.addEventListener('click', () => toggleExpandGoal(b.dataset.goalId)));
+    table.querySelectorAll('.task-check').forEach(c => c.addEventListener('change', () => handleToggleTask(c.dataset.taskId, c.checked)));
+    table.querySelectorAll('.task-del').forEach(b => b.addEventListener('click', () => handleDeleteTask(b.dataset.taskId)));
+    table.querySelectorAll('.task-add-btn').forEach(b => b.addEventListener('click', () => handleAddTask(b.dataset.goalId)));
+    table.querySelectorAll('.task-gen-btn').forEach(b => b.addEventListener('click', () => handleGenerateTasks(b.dataset.goalId)));
   }
+
+  document.getElementById('duplicate-goals-btn').addEventListener('click', async () => {
+    const weekGoals = goals.filter(g => g.week_start === metasWeekStart);
+    if(weekGoals.length === 0){ alert('Não há metas nesta semana para duplicar.'); return; }
+    const nextWeek = addDaysStr(metasWeekStart, 7);
+    const alreadyHas = goals.some(g => g.week_start === nextWeek);
+    if(alreadyHas && !confirm('Já existem metas cadastradas para a próxima semana. Duplicar mesmo assim?')) return;
+
+    const rows = weekGoals.map(g => ({ user_id: currentUser.id, week_start: nextWeek, priority: g.priority, area: g.area, meta: g.meta, resultado: 0 }));
+    const { error } = await sb.from('goals').insert(rows);
+    if(error){ alert('Erro ao duplicar metas: ' + error.message); return; }
+
+    await loadGoals();
+    metasWeekStart = nextWeek;
+    renderMetasView();
+  });
 
   // ---------- Análise estratégica ----------
   function renderStrategyForm(){

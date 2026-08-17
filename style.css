@@ -453,5 +453,25 @@ textarea{ resize: vertical; min-height: 54px; }
 .strategy-q label{ margin-top:0; }
 .strategy-q textarea{ min-height: 70px; }
 
+/* ---------- Checklist de tarefas por meta ---------- */
+.goal-tasks-row td{ padding: 0 4px 14px !important; border-bottom: 1px solid var(--border); }
+.goal-tasks-box{ background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.goal-tasks-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.goal-tasks-progress{ font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.task-row{ display:flex; align-items:center; gap:9px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.task-row:last-child{ border-bottom:none; }
+.task-row input[type="checkbox"]{ width:16px; height:16px; flex-shrink:0; accent-color: var(--amber); }
+.task-row .title{ flex:1; font-size:12.5px; }
+.task-row .title.done{ text-decoration: line-through; color: var(--muted-2); }
+.task-row .due{ font-family: var(--font-mono); font-size:10px; color: var(--muted-2); white-space:nowrap; }
+.task-add-row{ display:flex; gap:6px; margin-top:8px; }
+.task-add-row input{ font-size:12px; padding:7px 9px; }
+.toggle-tasks-btn{
+  background:none; border:none; color: var(--amber); cursor:pointer; font-size:11px;
+  font-family: var(--font-mono); text-transform:uppercase; letter-spacing:.03em; padding:2px 4px;
+}
+.progress-bar{ height:5px; border-radius:3px; background: var(--border); overflow:hidden; margin-top:6px; }
+.progress-bar-fill{ height:100%; background: var(--amber); }
+
 ::-webkit-scrollbar{ width:8px; height:8px; }
 ::-webkit-scrollbar-thumb{ background: var(--border); border-radius:4px; }

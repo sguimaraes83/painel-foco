@@ -78,6 +78,7 @@
     <div class="main-nav">
       <button class="main-nav-btn active" data-view="atividades">Atividades</button>
       <button class="main-nav-btn" data-view="metas">Metas &amp; Estratégia</button>
+      <button class="main-nav-btn" data-view="historico">Histórico</button>
     </div>
 
     <div id="view-atividades">
@@ -241,7 +242,10 @@
       </div>
 
       <div class="panel">
-        <div class="panel-title" id="goals-title">Metas da semana</div>
+        <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span id="goals-title">Metas da semana</span>
+          <span class="link-btn" id="duplicate-goals-btn">Duplicar para a próxima semana</span>
+        </div>
         <table class="report-table" id="goals-table"></table>
 
         <div class="goal-form">
@@ -271,6 +275,15 @@
         <button class="btn" id="strategy-save-btn" type="button">Salvar análise</button>
       </div>
 
+    </div>
+
+    <!-- ================= VIEW: HISTÓRICO ================= -->
+    <div id="view-historico" style="display:none;">
+      <div class="panel">
+        <div class="panel-title">Histórico semanal</div>
+        <table class="report-table" id="history-table"></table>
+        <div id="history-empty" class="empty-note" style="display:none;">Nenhuma semana registrada ainda.</div>
+      </div>
     </div>
   </div>
 </div>
