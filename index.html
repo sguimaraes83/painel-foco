@@ -75,6 +75,12 @@
       </div>
     </div>
 
+    <div class="main-nav">
+      <button class="main-nav-btn active" data-view="atividades">Atividades</button>
+      <button class="main-nav-btn" data-view="metas">Metas &amp; Estratégia</button>
+    </div>
+
+    <div id="view-atividades">
     <div class="grid">
       <!-- LEFT COLUMN -->
       <div>
@@ -211,6 +217,96 @@
           </div>
         </div>
       </div>
+    </div>
+    </div>
+
+    <!-- ================= VIEW: METAS & ESTRATÉGIA ================= -->
+    <div id="view-metas" style="display:none;">
+
+      <div class="panel">
+        <div class="filter-bar" style="margin-bottom:0;">
+          <button class="icon-btn" id="metas-week-prev" type="button" title="Semana anterior">←</button>
+          <div class="date-badge" id="metas-week-label">—</div>
+          <button class="icon-btn" id="metas-week-today" type="button">Semana atual</button>
+          <button class="icon-btn" id="metas-week-next" type="button" title="Próxima semana">→</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>KPIs da semana</span>
+          <span class="link-btn" id="manage-kpis-btn">Gerenciar KPIs</span>
+        </div>
+        <div class="kpi-grid" id="kpi-grid"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title" id="goals-title">Metas da semana</div>
+        <table class="report-table" id="goals-table"></table>
+
+        <div class="goal-form">
+          <div class="row2">
+            <div>
+              <label>Área</label>
+              <input list="area-list" id="goal-f-area" placeholder="Ex: Saúde" />
+              <datalist id="area-list"></datalist>
+            </div>
+            <div>
+              <label>Prioridade (P)</label>
+              <input type="number" id="goal-f-priority" min="0" step="1" placeholder="0" />
+            </div>
+          </div>
+          <label>Meta</label>
+          <textarea id="goal-f-meta" placeholder="Ex: Fazer 3 treinos, planejar a alimentação..."></textarea>
+          <label>Resultado</label>
+          <input type="number" id="goal-f-resultado" step="0.5" placeholder="0" />
+          <button class="btn" id="goal-save-btn" type="button">Adicionar meta</button>
+          <button class="btn btn-ghost" id="goal-cancel-btn" type="button" style="display:none;">Cancelar edição</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Análise estratégica da semana</div>
+        <div id="strategy-form"></div>
+        <button class="btn" id="strategy-save-btn" type="button">Salvar análise</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: GERENCIAR KPIs ================= -->
+<div class="modal-overlay" id="kpis-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="panel-title" style="margin:0;">Gerenciar KPIs</div>
+      <button class="icon-btn" id="kpis-modal-close" type="button">✕</button>
+    </div>
+
+    <div id="kpis-list"></div>
+
+    <div class="cat-form">
+      <div class="panel-title" id="kpi-form-title" style="font-size:13px; margin-top:18px;">Novo KPI</div>
+      <label>Nome</label>
+      <input type="text" id="kpi-f-label" placeholder="Ex: Horas de estudo" />
+      <div class="row2">
+        <div>
+          <label>Meta (valor alvo)</label>
+          <input type="number" id="kpi-f-target" step="0.1" placeholder="60" />
+        </div>
+        <div>
+          <label>Unidade</label>
+          <input type="text" id="kpi-f-unit" placeholder="%, min, un..." />
+        </div>
+      </div>
+      <label>Comparação</label>
+      <select id="kpi-f-comparison">
+        <option value="gte">Maior é melhor (atingir ou superar a meta)</option>
+        <option value="lte">Menor é melhor (ficar até a meta)</option>
+      </select>
+      <div class="empty-note" style="margin-top:8px;">Novos KPIs são manuais — você informa o valor de cada semana direto no cartão.</div>
+      <button class="btn" id="kpi-save-btn" type="button" style="margin-top:14px;">Adicionar KPI</button>
+      <button class="btn btn-ghost" id="kpi-cancel-btn" type="button" style="display:none;">Cancelar edição</button>
     </div>
   </div>
 </div>

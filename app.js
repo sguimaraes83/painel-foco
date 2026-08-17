@@ -63,6 +63,20 @@
   const NO_CAT = { id:null, label:'Sem categoria', color:'#5B6E92', is_meeting:false };
   const DAY_BUDGET = 480; // 8h
 
+  const DEFAULT_KPIS = [
+    { label:'Alto valor',  unit:'%',   target_value:60, comparison:'gte', metric_key:'high_value_pct', sort_order:1 },
+    { label:'Reuniões',    unit:'%',   target_value:25, comparison:'lte', metric_key:'meeting_pct',     sort_order:2 },
+    { label:'Bloqueado',   unit:'min', target_value:60, comparison:'lte', metric_key:'blocked_min',     sort_order:3 },
+    { label:'Retrabalho',  unit:'min', target_value:60, comparison:'lte', metric_key:'rework_min',      sort_order:4 },
+  ];
+  const STRATEGY_QUESTIONS = [
+    { key:'foco',        label:'Qual área é o foco dessa semana?' },
+    { key:'atrapalhou',  label:'O que me atrapalhou?' },
+    { key:'ajustar',     label:'O que ajustar na próxima semana?' },
+    { key:'regra_fixa',  label:'O que precisa virar regra fixa?' },
+    { key:'decisao_ceo', label:'Decisão do CEO para a próxima semana (1 foco estratégico)' },
+  ];
+
   let currentUser = null;
   let categories = [];   // {id, label, color, is_meeting, code, sort_order}
   let activities = [];   // {id, date, category_id, project, description, duration, status, value, created_at}
@@ -72,6 +86,15 @@
   let editingId = null;
   let editingCatId = null;
   let lastReport = null;
+
+  let currentView = 'atividades';
+  let metasWeekStart = null;
+  let goals = [];          // {id, week_start, priority, area, meta, resultado}
+  let kpis = [];           // {id, label, unit, target_value, comparison, metric_key, sort_order}
+  let kpiValues = [];      // {id, kpi_id, week_start, value}
+  let strategyNotes = [];  // {id, week_start, question_key, answer}
+  let editingGoalId = null;
+  let editingKpiId = null;
 
   const catById = id => categories.find(c => c.id === id) || NO_CAT;
 
@@ -181,9 +204,12 @@
   });
 
   async function bootstrap(){
+    if(!metasWeekStart) metasWeekStart = getMondayOfWeek(todayStr());
     await initCategories();
     await migrateLegacyCategories();
-    await loadActivities();
+    await initKpis();
+    await Promise.all([loadActivities(), loadGoals(), loadKpiValues(), loadStrategyNotes()]);
+    renderMetasView();
   }
 
   // ============================================================
@@ -329,6 +355,360 @@
     await initCategories();
     await loadActivities();
     renderCatsList();
+  }
+
+  // ============================================================
+  // NAVEGAÇÃO PRINCIPAL (Atividades ↔ Metas & Estratégia)
+  // ============================================================
+  document.querySelectorAll('.main-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.main-nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentView = btn.dataset.view;
+      document.getElementById('view-atividades').style.display = currentView === 'atividades' ? 'block' : 'none';
+      document.getElementById('view-metas').style.display = currentView === 'metas' ? 'block' : 'none';
+      if(currentView === 'metas') renderMetasView();
+    });
+  });
+
+  // ============================================================
+  // METAS & KPIs & ESTRATÉGIA — dados
+  // ============================================================
+  async function initKpis(){
+    const { data, error } = await sb.from('kpis').select('*').order('sort_order').order('created_at');
+    if(error){ console.error('Erro ao carregar KPIs:', error); kpis = []; return; }
+
+    if(!data || data.length === 0){
+      const seed = DEFAULT_KPIS.map(k => ({ ...k, user_id: currentUser.id }));
+      const { error: seedError } = await sb.from('kpis').insert(seed);
+      if(seedError) console.error('Erro ao criar KPIs padrão:', seedError);
+      const retry = await sb.from('kpis').select('*').order('sort_order').order('created_at');
+      kpis = retry.data || [];
+    } else {
+      kpis = data;
+    }
+  }
+
+  async function loadGoals(){
+    const { data, error } = await sb.from('goals').select('*').order('priority');
+    goals = error ? [] : (data || []);
+    if(error) console.error('Erro ao carregar metas:', error);
+  }
+
+  async function loadKpiValues(){
+    const { data, error } = await sb.from('kpi_values').select('*');
+    kpiValues = error ? [] : (data || []);
+    if(error) console.error('Erro ao carregar valores de KPI:', error);
+  }
+
+  async function loadStrategyNotes(){
+    const { data, error } = await sb.from('strategy_notes').select('*');
+    strategyNotes = error ? [] : (data || []);
+    if(error) console.error('Erro ao carregar análise estratégica:', error);
+  }
+
+  function weekEndStr(weekStart){ return addDaysStr(weekStart, 6); }
+
+  function computeKpiValue(kpi){
+    if(kpi.metric_key){
+      const from = metasWeekStart, to = weekEndStr(metasWeekStart);
+      const inWeek = activities.filter(a => a.date >= from && a.date <= to);
+      const stats = computeStats(inWeek);
+      switch(kpi.metric_key){
+        case 'high_value_pct': return stats.total ? (stats.highValueMin/stats.total)*100 : 0;
+        case 'meeting_pct':    return stats.total ? (stats.meetingMin/stats.total)*100 : 0;
+        case 'blocked_min':    return stats.blockedMin;
+        case 'rework_min':     return stats.reworkMin;
+        default: return 0;
+      }
+    }
+    const row = kpiValues.find(v => v.kpi_id === kpi.id && v.week_start === metasWeekStart);
+    return row ? row.value : null;
+  }
+
+  function formatKpiValue(kpi, value){
+    if(value === null || value === undefined) return '—';
+    if(kpi.unit === '%') return Math.round(value) + '%';
+    if(kpi.unit === 'min') return minutesToHM(Math.round(value));
+    return value + ' ' + kpi.unit;
+  }
+
+  // ---------- KPIs — CRUD (modal) ----------
+  document.getElementById('manage-kpis-btn').addEventListener('click', openKpisModal);
+  document.getElementById('kpis-modal-close').addEventListener('click', closeKpisModal);
+  document.getElementById('kpis-modal').addEventListener('click', (e) => { if(e.target.id === 'kpis-modal') closeKpisModal(); });
+
+  function openKpisModal(){ renderKpisList(); document.getElementById('kpis-modal').classList.add('open'); }
+  function closeKpisModal(){ document.getElementById('kpis-modal').classList.remove('open'); exitKpiEditMode(); clearKpiForm(); }
+
+  function renderKpisList(){
+    const box = document.getElementById('kpis-list');
+    if(kpis.length === 0){ box.innerHTML = '<div class="empty-note">Nenhum KPI cadastrado ainda.</div>'; return; }
+    box.innerHTML = kpis.map(k => `
+      <div class="cat-row">
+        <div class="name">${k.label}${k.metric_key ? ' <span class="meeting-tag">automático</span>' : ''}<br>
+          <span style="color:var(--muted-2); font-size:11px;">Meta: ${k.comparison === 'gte' ? '≥' : '≤'} ${k.target_value}${k.unit === '%' ? '%' : ' ' + k.unit}</span>
+        </div>
+        <button class="edit-btn" data-id="${k.id}" title="Editar">✎</button>
+        <button class="del-btn" data-id="${k.id}" title="Remover">✕</button>
+      </div>
+    `).join('');
+    box.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => startKpiEdit(b.dataset.id)));
+    box.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => handleDeleteKpi(b.dataset.id)));
+  }
+
+  function clearKpiForm(){
+    document.getElementById('kpi-f-label').value = '';
+    document.getElementById('kpi-f-target').value = '';
+    document.getElementById('kpi-f-unit').value = '';
+    document.getElementById('kpi-f-comparison').value = 'gte';
+  }
+  function startKpiEdit(id){
+    const k = kpis.find(x => x.id === id);
+    if(!k) return;
+    editingKpiId = id;
+    document.getElementById('kpi-f-label').value = k.label;
+    document.getElementById('kpi-f-target').value = k.target_value;
+    document.getElementById('kpi-f-unit').value = k.unit;
+    document.getElementById('kpi-f-comparison').value = k.comparison;
+    document.getElementById('kpi-form-title').textContent = 'Editar KPI';
+    document.getElementById('kpi-save-btn').textContent = 'Salvar alterações';
+    document.getElementById('kpi-cancel-btn').style.display = 'block';
+  }
+  function exitKpiEditMode(){
+    editingKpiId = null;
+    document.getElementById('kpi-form-title').textContent = 'Novo KPI';
+    document.getElementById('kpi-save-btn').textContent = 'Adicionar KPI';
+    document.getElementById('kpi-cancel-btn').style.display = 'none';
+  }
+  document.getElementById('kpi-cancel-btn').addEventListener('click', () => { exitKpiEditMode(); clearKpiForm(); });
+
+  document.getElementById('kpi-save-btn').addEventListener('click', async () => {
+    const label = document.getElementById('kpi-f-label').value.trim();
+    const target_value = parseFloat(document.getElementById('kpi-f-target').value);
+    const unit = document.getElementById('kpi-f-unit').value.trim() || '%';
+    const comparison = document.getElementById('kpi-f-comparison').value;
+    if(!label || isNaN(target_value)){ alert('Preencha o nome e a meta do KPI.'); return; }
+
+    const btn = document.getElementById('kpi-save-btn');
+    btn.disabled = true;
+
+    if(editingKpiId){
+      const { error } = await sb.from('kpis').update({ label, target_value, unit, comparison }).eq('id', editingKpiId);
+      if(error) alert('Erro ao atualizar KPI: ' + error.message);
+      exitKpiEditMode();
+    } else {
+      const sort_order = kpis.length > 0 ? Math.max(...kpis.map(k => k.sort_order || 0)) + 1 : 1;
+      const { error } = await sb.from('kpis').insert({ user_id: currentUser.id, label, target_value, unit, comparison, sort_order });
+      if(error) alert('Erro ao criar KPI: ' + error.message);
+    }
+
+    btn.disabled = false;
+    clearKpiForm();
+    await initKpis();
+    renderKpisList();
+    renderMetasView();
+  });
+
+  async function handleDeleteKpi(id){
+    if(!confirm('Remover este KPI?')) return;
+    const { error } = await sb.from('kpis').delete().eq('id', id);
+    if(error){ alert('Erro ao remover KPI: ' + error.message); return; }
+    if(editingKpiId === id){ exitKpiEditMode(); clearKpiForm(); }
+    await initKpis();
+    await loadKpiValues();
+    renderKpisList();
+    renderMetasView();
+  }
+
+  // ---------- KPIs — cartões da semana ----------
+  function renderKpiGrid(){
+    const box = document.getElementById('kpi-grid');
+    if(kpis.length === 0){ box.innerHTML = '<div class="empty-note">Cadastre seu primeiro KPI em "Gerenciar KPIs".</div>'; return; }
+
+    box.innerHTML = kpis.map(k => {
+      const value = computeKpiValue(k);
+      const hasValue = value !== null && value !== undefined;
+      const ok = hasValue && (k.comparison === 'gte' ? value >= k.target_value : value <= k.target_value);
+      const statusDot = hasValue ? `<div class="status ${ok ? 'ok' : 'bad'}"></div>` : '';
+      const targetTxt = `Meta: ${k.comparison === 'gte' ? '≥' : '≤'} ${k.target_value}${k.unit === '%' ? '%' : ' ' + k.unit}`;
+
+      const manualInput = !k.metric_key ? `
+        <div class="manual-input">
+          <input type="number" step="0.1" id="kpi-val-${k.id}" value="${hasValue ? value : ''}" placeholder="valor da semana">
+          <button data-id="${k.id}" class="kpi-save-value-btn">Salvar</button>
+        </div>` : '';
+
+      return `
+        <div class="kpi-card">
+          ${statusDot}
+          <div class="label">${k.label}</div>
+          <div class="value-row"><div class="value">${formatKpiValue(k, value)}</div></div>
+          <div class="target">${targetTxt}</div>
+          ${manualInput}
+        </div>`;
+    }).join('');
+
+    box.querySelectorAll('.kpi-save-value-btn').forEach(btn => {
+      btn.addEventListener('click', () => saveKpiValue(btn.dataset.id));
+    });
+  }
+
+  async function saveKpiValue(kpiId){
+    const input = document.getElementById('kpi-val-' + kpiId);
+    const value = parseFloat(input.value);
+    if(isNaN(value)){ alert('Informe um valor numérico.'); return; }
+
+    const { error } = await sb.from('kpi_values')
+      .upsert({ kpi_id: kpiId, user_id: currentUser.id, week_start: metasWeekStart, value }, { onConflict: 'kpi_id,week_start' });
+    if(error){ alert('Erro ao salvar valor do KPI: ' + error.message); return; }
+
+    await loadKpiValues();
+    renderKpiGrid();
+  }
+
+  // ---------- Metas semanais (Scorecard) ----------
+  function getAllAreas(){ return [...new Set(goals.map(g => g.area))].sort(); }
+
+  function clearGoalForm(){
+    document.getElementById('goal-f-area').value = '';
+    document.getElementById('goal-f-priority').value = '';
+    document.getElementById('goal-f-meta').value = '';
+    document.getElementById('goal-f-resultado').value = '';
+  }
+  function exitGoalEditMode(){
+    editingGoalId = null;
+    document.getElementById('goal-save-btn').textContent = 'Adicionar meta';
+    document.getElementById('goal-cancel-btn').style.display = 'none';
+  }
+  function startGoalEdit(id){
+    const g = goals.find(x => x.id === id);
+    if(!g) return;
+    editingGoalId = id;
+    document.getElementById('goal-f-area').value = g.area;
+    document.getElementById('goal-f-priority').value = g.priority;
+    document.getElementById('goal-f-meta').value = g.meta;
+    document.getElementById('goal-f-resultado').value = g.resultado;
+    document.getElementById('goal-save-btn').textContent = 'Salvar alterações';
+    document.getElementById('goal-cancel-btn').style.display = 'block';
+  }
+  document.getElementById('goal-cancel-btn').addEventListener('click', () => { exitGoalEditMode(); clearGoalForm(); });
+
+  document.getElementById('goal-save-btn').addEventListener('click', async () => {
+    const area = document.getElementById('goal-f-area').value.trim();
+    const priority = parseInt(document.getElementById('goal-f-priority').value, 10) || 0;
+    const meta = document.getElementById('goal-f-meta').value.trim();
+    const resultado = parseFloat(document.getElementById('goal-f-resultado').value) || 0;
+    if(!area){ alert('Informe a área da meta.'); return; }
+
+    const btn = document.getElementById('goal-save-btn');
+    btn.disabled = true;
+
+    if(editingGoalId){
+      const { error } = await sb.from('goals').update({ area, priority, meta, resultado }).eq('id', editingGoalId);
+      if(error) alert('Erro ao atualizar meta: ' + error.message);
+      exitGoalEditMode();
+    } else {
+      const { error } = await sb.from('goals').insert({ user_id: currentUser.id, week_start: metasWeekStart, area, priority, meta, resultado });
+      if(error) alert('Erro ao criar meta: ' + error.message);
+    }
+
+    btn.disabled = false;
+    clearGoalForm();
+    await loadGoals();
+    renderMetasView();
+  });
+
+  async function handleDeleteGoal(id){
+    if(!confirm('Remover esta meta?')) return;
+    if(editingGoalId === id){ exitGoalEditMode(); clearGoalForm(); }
+    const { error } = await sb.from('goals').delete().eq('id', id);
+    if(error){ alert('Erro ao remover meta: ' + error.message); return; }
+    await loadGoals();
+    renderMetasView();
+  }
+
+  function renderGoalsTable(){
+    const isCurrent = metasWeekStart === getMondayOfWeek(todayStr());
+    document.getElementById('goals-title').textContent = isCurrent ? 'Metas da semana' : `Metas — semana de ${fmtDateShort(metasWeekStart)}`;
+
+    document.getElementById('area-list').innerHTML = getAllAreas().map(a => `<option value="${a}"></option>`).join('');
+
+    const weekGoals = goals.filter(g => g.week_start === metasWeekStart).slice().sort((a,b) => a.priority - b.priority);
+    const table = document.getElementById('goals-table');
+
+    if(weekGoals.length === 0){
+      table.innerHTML = '<tbody><tr><td style="color:#5B6E92; padding:10px 4px;">Nenhuma meta cadastrada para esta semana ainda.</td></tr></tbody>';
+      return;
+    }
+
+    const total = weekGoals.reduce((s,g) => s + Number(g.resultado || 0), 0);
+
+    table.innerHTML = `
+      <thead><tr><th>P</th><th>Área</th><th>Meta</th><th class="num">Resultado</th><th></th></tr></thead>
+      <tbody>
+        ${weekGoals.map(g => `
+          <tr>
+            <td class="num">${g.priority}</td>
+            <td>${g.area}</td>
+            <td>${g.meta || '<span style="color:#5B6E92">—</span>'}</td>
+            <td class="num">${g.resultado}</td>
+            <td style="white-space:nowrap;">
+              <button class="edit-btn" data-id="${g.id}" title="Editar">✎</button>
+              <button class="del-btn" data-id="${g.id}" title="Remover">✕</button>
+            </td>
+          </tr>
+        `).join('')}
+        <tr><td></td><td></td><td style="text-align:right; color:var(--muted);">Total</td><td class="num"><b>${total}</b></td><td></td></tr>
+      </tbody>`;
+
+    table.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => startGoalEdit(b.dataset.id)));
+    table.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => handleDeleteGoal(b.dataset.id)));
+  }
+
+  // ---------- Análise estratégica ----------
+  function renderStrategyForm(){
+    const box = document.getElementById('strategy-form');
+    box.innerHTML = STRATEGY_QUESTIONS.map(q => {
+      const note = strategyNotes.find(n => n.week_start === metasWeekStart && n.question_key === q.key);
+      return `
+        <div class="strategy-q">
+          <label>${q.label}</label>
+          <textarea id="strategy-${q.key}" placeholder="Sua resposta...">${note ? note.answer : ''}</textarea>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('strategy-save-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('strategy-save-btn');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+
+    const rows = STRATEGY_QUESTIONS.map(q => ({
+      user_id: currentUser.id,
+      week_start: metasWeekStart,
+      question_key: q.key,
+      answer: document.getElementById('strategy-' + q.key).value.trim(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await sb.from('strategy_notes').upsert(rows, { onConflict: 'user_id,week_start,question_key' });
+    btn.disabled = false; btn.textContent = 'Salvar análise';
+    if(error){ alert('Erro ao salvar análise: ' + error.message); return; }
+
+    await loadStrategyNotes();
+  });
+
+  // ---------- Navegação de semana + render geral da view ----------
+  document.getElementById('metas-week-prev').addEventListener('click', () => { metasWeekStart = addDaysStr(metasWeekStart, -7); renderMetasView(); });
+  document.getElementById('metas-week-next').addEventListener('click', () => { metasWeekStart = addDaysStr(metasWeekStart, 7); renderMetasView(); });
+  document.getElementById('metas-week-today').addEventListener('click', () => { metasWeekStart = getMondayOfWeek(todayStr()); renderMetasView(); });
+
+  function renderMetasView(){
+    if(!metasWeekStart || !currentUser) return;
+    document.getElementById('metas-week-label').textContent = `${fmtDateShort(metasWeekStart)} (Seg) — ${fmtDateShort(weekEndStr(metasWeekStart))} (Dom)`;
+    renderKpiGrid();
+    renderGoalsTable();
+    renderStrategyForm();
   }
 
   // ============================================================
